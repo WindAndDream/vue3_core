@@ -1271,7 +1271,15 @@ export interface ComponentCustomElementInterface {
     shouldUpdate?: boolean,
   ): void
   /**
+   * @internal
+   */
+  _beginPatch(): void
+  /**
+   * @internal
+   */
+  _endPatch(): void
+  /**
    * @internal attached by the nested Teleport when shadowRoot is false.
    */
-  _teleportTarget?: RendererElement
+  _teleportTargets?: Set<RendererElement>
 }
