@@ -12,8 +12,8 @@ describe('compiler: codeframe', () => {
     `.trim()
 
   test('line near top', () => {
-    const keyStart = source.indexOf(`key="one"`)
-    const keyEnd = keyStart + `key="one"`.length
+    const keyStart = source.indexOf(`key="one"`) // 找到需要高亮报错“key=one”，获取索引
+    const keyEnd = keyStart + `key="one"`.length // 相加报错字符串本身的长度，作为结束索引
     expect(generateCodeFrame(source, keyStart, keyEnd)).toMatchSnapshot()
   })
 
