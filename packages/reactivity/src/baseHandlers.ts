@@ -48,8 +48,8 @@ function hasOwnProperty(this: object, key: unknown) {
 
 class BaseReactiveHandler implements ProxyHandler<Target> {
   constructor(
-    protected readonly _isReadonly = false,
-    protected readonly _isShallow = false,
+    protected readonly _isReadonly = false, // 是否只读
+    protected readonly _isShallow = false, // 深/浅层代理
   ) {}
 
   get(target: Target, key: string | symbol, receiver: object): any {
@@ -86,6 +86,7 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
 
     const targetIsArray = isArray(target)
 
+    // 非只读
     if (!isReadonly) {
       let fn: Function | undefined
       if (targetIsArray && (fn = arrayInstrumentations[key])) {

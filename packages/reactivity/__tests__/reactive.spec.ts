@@ -409,12 +409,13 @@ describe('reactivity/reactive', () => {
 
   // #11979
   test('should release property Dep instance if it no longer has subscribers', () => {
+    const t = targetMap
     let obj = { x: 1 }
     let a = reactive(obj)
     const e = effect(() => a.x)
-    expect(targetMap.get(obj)?.get('x')).toBeTruthy()
+    expect(t.get(obj)?.get('x')).toBeTruthy()
     e.effect.stop()
-    expect(targetMap.get(obj)?.get('x')).toBeFalsy()
+    expect(t.get(obj)?.get('x')).toBeFalsy()
   })
 
   test('should trigger reactivity when Map key is undefined', () => {

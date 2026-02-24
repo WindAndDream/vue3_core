@@ -43,6 +43,7 @@ export class EffectScope {
   constructor(public detached = false) {
     this.parent = activeEffectScope
     if (!detached && activeEffectScope) {
+      // 自己在父 scopes 数组中的位置，用于 O(1) 删除
       this.index =
         (activeEffectScope.scopes || (activeEffectScope.scopes = [])).push(
           this,

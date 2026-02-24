@@ -154,8 +154,8 @@ describe('reactivity/effect', () => {
     expect(parentDummy).toBe(undefined)
     obj.prop = 4
     expect(dummy).toBe(4)
-    // this doesn't work, should it?
-    // expect(parentDummy).toBe(4)
+    // 这不起作用，应该吗？
+    // 断言 parentDummy 为 4（当前不通过）
     parent.prop = 2
     expect(dummy).toBe(2)
     expect(parentDummy).toBe(2)
@@ -605,7 +605,7 @@ describe('reactivity/effect', () => {
     expect(output.fx2).toBe(1 + 3 + 3)
     expect(fx1Spy).toHaveBeenCalledTimes(1)
 
-    // Invoked due to change of fx1.
+    // 因 fx1 变化而触发。
     expect(fx2Spy).toHaveBeenCalledTimes(1)
 
     fx1Spy.mockClear()
@@ -673,17 +673,17 @@ describe('reactivity/effect', () => {
     expect(dummy).toEqual({ num1: 0, num2: 1, num3: 2 })
     expect(parentSpy).toHaveBeenCalledTimes(1)
     expect(childSpy).toHaveBeenCalledTimes(2)
-    // this should only call the childeffect
+    // 这里只应调用 childeffect
     nums.num1 = 4
     expect(dummy).toEqual({ num1: 4, num2: 1, num3: 2 })
     expect(parentSpy).toHaveBeenCalledTimes(1)
     expect(childSpy).toHaveBeenCalledTimes(3)
-    // this calls the parenteffect, which calls the childeffect once
+    // 这里调用 parenteffect，并且它会调用 childeffect 一次
     nums.num2 = 10
     expect(dummy).toEqual({ num1: 4, num2: 10, num3: 2 })
     expect(parentSpy).toHaveBeenCalledTimes(2)
     expect(childSpy).toHaveBeenCalledTimes(4)
-    // this calls the parenteffect, which calls the childeffect once
+    // 这里调用 parenteffect，并且它会调用 childeffect 一次
     nums.num3 = 7
     expect(dummy).toEqual({ num1: 4, num2: 10, num3: 7 })
     expect(parentSpy).toHaveBeenCalledTimes(3)
@@ -735,14 +735,14 @@ describe('reactivity/effect', () => {
     )
     expect(scheduler).not.toHaveBeenCalled()
     expect(dummy).toBe(1)
-    // should be called on first trigger
+    // 第一次触发时应被调用
     obj.foo++
     expect(scheduler).toHaveBeenCalledTimes(1)
-    // should not run yet
+    // 此时不应运行
     expect(dummy).toBe(1)
-    // manually run
+    // 手动运行
     run()
-    // should have run
+    // 此时应已运行
     expect(dummy).toBe(2)
   })
 
@@ -906,7 +906,7 @@ describe('reactivity/effect', () => {
     obj.prop = 3
     expect(dummy).toBe(2)
 
-    // stopped effect should still be manually callable
+    // 已停止的 effect 仍应可手动调用
     runner()
     expect(dummy).toBe(3)
   })
@@ -931,7 +931,7 @@ describe('reactivity/effect', () => {
     obj1.prop = 4
     obj2.prop = 5
 
-    // Check that both dependencies have been cleared
+    // 确认两个依赖都已清除
     expect(dummy1).toBe(2)
     expect(dummy2).toBe(3)
   })
@@ -956,14 +956,14 @@ describe('reactivity/effect', () => {
     obj.prop = 2
     expect(dummy).toBe(1)
 
-    // observed value in inner stopped effect
-    // will track outer effect as an dependency
+    // 内部已停止的 effect 中的读取值
+    // 会把外层 effect 作为依赖进行跟踪
     effect(() => {
       runner()
     })
     expect(dummy).toBe(2)
 
-    // notify outer effect to run
+    // 通知外层 effect 运行
     obj.prop = 3
     expect(dummy).toBe(3)
   })
@@ -1104,7 +1104,7 @@ describe('reactivity/effect', () => {
       expect(fnSpy).toHaveBeenCalledTimes(3)
       expect(has).toBe(false)
 
-      // should not trigger on unrelated key
+      // 不应因无关 key 触发
       obj.bar = 2
       expect(fnSpy).toHaveBeenCalledTimes(3)
       expect(has).toBe(false)
@@ -1176,9 +1176,9 @@ describe('reactivity/effect', () => {
     expect(spy2).toHaveBeenCalledTimes(1)
 
     n.value++
-    // outer effect should not trigger
+    // 外层 effect 不应触发
     expect(spy1).toHaveBeenCalledTimes(1)
-    // inner effect should trigger
+    // 内层 effect 应触发
     expect(spy2).toHaveBeenCalledTimes(2)
   })
 
@@ -1263,7 +1263,7 @@ describe('reactivity/effect', () => {
       await nextTick()
       expect(cleanupEffect).toHaveBeenCalledTimes(2)
 
-      // call it on stop
+      // 在 stop 时调用
       e.effect.stop()
       expect(cleanupEffect).toHaveBeenCalledTimes(3)
     })

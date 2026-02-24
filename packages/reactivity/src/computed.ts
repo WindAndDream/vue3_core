@@ -19,7 +19,7 @@ declare const WritableComputedRefSymbol: unique symbol
 interface BaseComputedRef<T, S = T> extends Ref<T, S> {
   [ComputedRefSymbol]: true
   /**
-   * @deprecated computed no longer uses effect
+   * @deprecated computed 不再使用 effect
    */
   effect: ComputedRefImpl
 }
@@ -41,14 +41,13 @@ export interface WritableComputedOptions<T, S = T> {
 }
 
 /**
- * @private exported by @vue/reactivity for Vue core use, but not exported from
- * the main vue package
+ * @private 由 @vue/reactivity 导出供 Vue 核心使用，但不从主 vue 包导出
  */
 export class ComputedRefImpl<T = any> implements Subscriber {
   /**
    * @internal
    */
-  _value: any = undefined
+  _value: any = undefined // 计算属性缓存值
   /**
    * @internal
    */
@@ -57,13 +56,13 @@ export class ComputedRefImpl<T = any> implements Subscriber {
    * @internal
    */
   readonly __v_isRef = true
-  // TODO isolatedDeclarations ReactiveFlags.IS_REF
+  // TODO isolatedDeclarations ReactiveFlags.IS_REF（待处理）
   /**
    * @internal
    */
   readonly __v_isReadonly: boolean
-  // TODO isolatedDeclarations ReactiveFlags.IS_READONLY
-  // A computed is also a subscriber that tracks other deps
+  // TODO isolatedDeclarations ReactiveFlags.IS_READONLY（待处理）
+  // computed 同时也是一个订阅者，用于跟踪其他 deps
   /**
    * @internal
    */
@@ -89,15 +88,15 @@ export class ComputedRefImpl<T = any> implements Subscriber {
    */
   next?: Subscriber = undefined
 
-  // for backwards compat
+  // 向后兼容
   effect: this = this
-  // dev only
+  // 仅开发环境
   onTrack?: (event: DebuggerEvent) => void
-  // dev only
+  // 仅开发环境
   onTrigger?: (event: DebuggerEvent) => void
 
   /**
-   * Dev only
+   * 仅开发环境
    * @internal
    */
   _warnRecursive?: boolean
@@ -118,13 +117,13 @@ export class ComputedRefImpl<T = any> implements Subscriber {
     this.flags |= EffectFlags.DIRTY
     if (
       !(this.flags & EffectFlags.NOTIFIED) &&
-      // avoid infinite self recursion
+      // 避免无限自递归
       activeSub !== this
     ) {
       batch(this, true)
       return true
     } else if (__DEV__) {
-      // TODO warn
+      // TODO 警告
     }
   }
 
@@ -137,7 +136,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
         })
       : this.dep.track()
     refreshComputed(this)
-    // sync version after evaluation
+    // 评估后同步版本
     if (link) {
       link.version = this.dep.version
     }
@@ -154,22 +153,21 @@ export class ComputedRefImpl<T = any> implements Subscriber {
 }
 
 /**
- * Takes a getter function and returns a readonly reactive ref object for the
- * returned value from the getter. It can also take an object with get and set
- * functions to create a writable ref object.
+ * 接收一个 getter 函数并返回只读的响应式 ref 对象，其值来自该 getter。
+ * 也可以接收包含 get 和 set 函数的对象以创建可写的 ref 对象。
  *
  * @example
  * ```js
- * // Creating a readonly computed ref:
+ * // 创建只读 computed ref：
  * const count = ref(1)
  * const plusOne = computed(() => count.value + 1)
  *
  * console.log(plusOne.value) // 2
- * plusOne.value++ // error
+ * plusOne.value++ // 错误
  * ```
  *
  * ```js
- * // Creating a writable computed ref:
+ * // 创建可写 computed ref：
  * const count = ref(1)
  * const plusOne = computed({
  *   get: () => count.value + 1,
@@ -182,8 +180,8 @@ export class ComputedRefImpl<T = any> implements Subscriber {
  * console.log(count.value) // 0
  * ```
  *
- * @param getter - Function that produces the next value.
- * @param debugOptions - For debugging. See {@link https://vuejs.org/guide/extras/reactivity-in-depth.html#computed-debugging}.
+ * @param getter - 生成下一个值的函数。
+ * @param debugOptions - 用于调试。参见 {@link https://vuejs.org/guide/extras/reactivity-in-depth.html#computed-debugging}.
  * @see {@link https://vuejs.org/api/reactivity-core.html#computed}
  */
 export function computed<T>(

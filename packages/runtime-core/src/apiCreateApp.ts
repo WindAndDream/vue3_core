@@ -271,7 +271,7 @@ export function createAppAPI<HostElement>(
     let isMounted = false
 
     const app: App = (context.app = {
-      _uid: uid++,
+      _uid: uid++, // 每个app的唯一id
       _component: rootComponent as ConcreteComponent,
       _props: rootProps,
       _container: null,

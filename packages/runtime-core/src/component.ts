@@ -261,6 +261,7 @@ export type ConcreteComponent<
  * A type used in public APIs where a component type is expected.
  * The constructor type is an artificial type returned by defineComponent().
  */
+// Vue中的组件需要满足任意一个情况就行， Options API 对象（包含 data, methods, render 等属性的对象）和 函数式组件（一个纯函数）
 export type Component<
   PropsOrInstance = any,
   RawBindings = any,

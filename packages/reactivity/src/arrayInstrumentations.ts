@@ -248,6 +248,7 @@ function apply(
   // If the method being called is from a user-extended Array, the arguments will be unknown
   // (unknown order and unknown parameter types). In this case, we skip the shallowReadArray
   // handling and directly call apply with self.
+  // 如果用户自己扩展了数组方法，就对用户的扩展方法进行调用
   if (methodFn !== arrayProto[method as any]) {
     const result = methodFn.apply(self, args)
     return needsWrap ? toReactive(result) : result

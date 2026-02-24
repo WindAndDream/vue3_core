@@ -14,5 +14,6 @@
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "vitest.nodeExecutable": "C:\\Users\\Administrator\\AppData\\Local\\fnm_multishells\\167240_1769583175902\\node.exe"
 }
