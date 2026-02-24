@@ -317,6 +317,7 @@ function prepareDeps(sub: Subscriber) {
 
 function cleanupDeps(sub: Subscriber) {
   // 清理未使用的 deps
+  // Cleanup unused deps
   let head
   let tail = sub.depsTail
   let link = tail
@@ -472,11 +473,6 @@ function removeDep(link: Link) {
     nextDep.prevDep = prevDep
     link.nextDep = undefined
   }
-}
-
-export interface ReactiveEffectRunner<T = any> {
-  (): T
-  effect: ReactiveEffect
 }
 
 export function effect<T = any>(
