@@ -46,17 +46,25 @@ function hasOwnProperty(this: object, key: unknown) {
   return obj.hasOwnProperty(key as string)
 }
 
+// 所有代理处理器的基类
 class BaseReactiveHandler implements ProxyHandler<Target> {
   constructor(
     protected readonly _isReadonly = false, // 是否只读
     protected readonly _isShallow = false, // 深/浅层代理
   ) {}
 
+  // 触发 get 方法时的钩子
+  // target 为代理的原始对象，key 则是触发 get 的键
+  // receiver 非常特殊，由于JS中的 this 是动态，这个参数指的是真正调用 get 方法的对象
   get(target: Target, key: string | symbol, receiver: object): any {
+    // 如果访问的key为响应式标志，则直接对应的值
     if (key === ReactiveFlags.SKIP) return target[ReactiveFlags.SKIP]
 
+    // 只读、深/浅层
     const isReadonly = this._isReadonly,
       isShallow = this._isShallow
+
+    // 访问的key为响应式标志
     if (key === ReactiveFlags.IS_REACTIVE) {
       return !isReadonly
     } else if (key === ReactiveFlags.IS_READONLY) {
@@ -64,6 +72,7 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
     } else if (key === ReactiveFlags.IS_SHALLOW) {
       return isShallow
     } else if (key === ReactiveFlags.RAW) {
+      // 从缓存 map 中拿到代理本体，判断接收器调用是否就是代理本体
       if (
         receiver ===
           (isReadonly
@@ -76,6 +85,8 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
           ).get(target) ||
         // receiver is not the reactive proxy, but has the same prototype
         // this means the receiver is a user proxy of the reactive proxy
+        // 这个额外判断，可以理解为“鸭子类型”
+        // 只要原型相同，也就当作“对应的代理对象”，直接放行
         Object.getPrototypeOf(target) === Object.getPrototypeOf(receiver)
       ) {
         return target
@@ -86,9 +97,9 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
 
     const targetIsArray = isArray(target)
 
-    // 非只读
     if (!isReadonly) {
       let fn: Function | undefined
+      // 数组的需要特殊处理，不然会出现很多bug、性能问题等...
       if (targetIsArray && (fn = arrayInstrumentations[key])) {
         return fn
       }
@@ -118,12 +129,14 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
       return res
     }
 
+    // ref 解包
     if (isRef(res)) {
       // ref unwrapping - skip unwrap for Array + integer key.
       const value = targetIsArray && isIntegerKey(key) ? res : res.value
       return isReadonly && isObject(value) ? readonly(value) : value
     }
 
+    // 嵌套解包，如果是对象会递归走到上面的解包
     if (isObject(res)) {
       // Convert returned value into a proxy as well. we do the isObject check
       // here to avoid invalid value warning. Also need to lazy access readonly
@@ -135,6 +148,7 @@ class BaseReactiveHandler implements ProxyHandler<Target> {
   }
 }
 
+// 可变处理器的实现
 class MutableReactiveHandler extends BaseReactiveHandler {
   constructor(isShallow = false) {
     super(false, isShallow)
@@ -249,17 +263,23 @@ class ReadonlyReactiveHandler extends BaseReactiveHandler {
   }
 }
 
+/** 用于创建响应式对象时的使用 */
+
+// 可变处理器
 export const mutableHandlers: ProxyHandler<object> =
   /*@__PURE__*/ new MutableReactiveHandler()
 
+// 只读处理器
 export const readonlyHandlers: ProxyHandler<object> =
   /*@__PURE__*/ new ReadonlyReactiveHandler()
 
+// 浅层可变处理器
 export const shallowReactiveHandlers: MutableReactiveHandler =
   /*@__PURE__*/ new MutableReactiveHandler(true)
 
 // Props handlers are special in the sense that it should not unwrap top-level
 // refs (in order to allow refs to be explicitly passed down), but should
 // retain the reactivity of the normal readonly object.
+// 浅层只读处理器
 export const shallowReadonlyHandlers: ReadonlyReactiveHandler =
   /*@__PURE__*/ new ReadonlyReactiveHandler(true)

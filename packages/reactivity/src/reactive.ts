@@ -35,12 +35,14 @@ export const shallowReadonlyMap: WeakMap<Target, any> = new WeakMap<
   any
 >()
 
+// 创建响应式对象时，传入的对象类型的枚举值
 enum TargetType {
   INVALID = 0,
   COMMON = 1,
   COLLECTION = 2,
 }
 
+// 对象类型映射
 function targetTypeMap(rawType: string) {
   switch (rawType) {
     case 'Object':
@@ -56,7 +58,9 @@ function targetTypeMap(rawType: string) {
   }
 }
 
+// 获取对象的特定类型
 function getTargetType(value: Target) {
+  // 跳过、值不可被扩展（isExtensible）则直接返回类型无效
   return value[ReactiveFlags.SKIP] || !Object.isExtensible(value)
     ? TargetType.INVALID
     : targetTypeMap(toRawType(value))
@@ -89,9 +93,11 @@ export type Reactive<T> = UnwrapNestedRefs<T> &
  * @param target - The source object.
  * @see {@link https://vuejs.org/api/reactivity-core.html#reactive}
  */
+// 响应式函数类型签名
 export function reactive<T extends object>(target: T): Reactive<T>
 export function reactive(target: object) {
   // if trying to observe a readonly proxy, return the readonly version.
+  // 传入的对象如果是只读则直接返回只读
   if (isReadonly(target)) {
     return target
   }
@@ -255,6 +261,7 @@ export function shallowReadonly<T extends object>(target: T): Readonly<T> {
   )
 }
 
+// 创建响应式对象
 function createReactiveObject(
   target: Target,
   isReadonly: boolean,
@@ -262,6 +269,7 @@ function createReactiveObject(
   collectionHandlers: ProxyHandler<any>,
   proxyMap: WeakMap<Target, any>,
 ) {
+  // 不是对象则直接返回
   if (!isObject(target)) {
     if (__DEV__) {
       warn(
@@ -272,29 +280,41 @@ function createReactiveObject(
     }
     return target
   }
+
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
+  // 如果已经是响应式对象则直接返回
   if (
+    // 存在原始对象
     target[ReactiveFlags.RAW] &&
+    // 不是只读且为响应式对象
     !(isReadonly && target[ReactiveFlags.IS_REACTIVE])
   ) {
     return target
   }
+
   // only specific value types can be observed.
+  // 特定类型的值才可以被观察
   const targetType = getTargetType(target)
+  // 值如果无效则直接返回原始值
   if (targetType === TargetType.INVALID) {
     return target
   }
+
   // target already has corresponding Proxy
+  // 已经存在代理对象了，走缓存直接返回
   const existingProxy = proxyMap.get(target)
   if (existingProxy) {
     return existingProxy
   }
+
+  // 创建代理对象
   const proxy = new Proxy(
     target,
+    // 根据不同的对象类型走不同的处理器
     targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers,
   )
-  proxyMap.set(target, proxy)
+  proxyMap.set(target, proxy) // 添加弱映射
   return proxy
 }
 

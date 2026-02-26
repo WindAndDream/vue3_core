@@ -511,6 +511,9 @@ function propertyToRef(
  * }
  * ```
  */
+// 接口的核心目的是控制哪些类型不应该被自动解包（unwrap）
+// ref 嵌套在响应式对象中时，会自动解包，但有些类型不应该被自动解包
+// 例如 window、Node 中可能存在和 ref 一样解构的类型，避免误伤
 export interface RefUnwrapBailTypes {}
 
 export type ShallowUnwrapRef<T> = {

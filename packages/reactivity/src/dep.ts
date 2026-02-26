@@ -23,15 +23,15 @@ export let globalVersion = 0
  * 由一个 Link 实例表示。
  *
  * Link 同时是两个双向链表中的节点 - 一个用于关联的 sub
- * 跟踪它的所有 deps，另一个用于关联的 dep 跟踪它的所有 subs。
+ * 跟踪它的所有 deps，另一个用于关联的 dep 跟踪它的所有
  *
  * @internal
  */
 export class Link {
   /**
    * - 每次 effect 运行前，所有旧的 dep link 的 version 会重置为 -1
-   * - 运行期间，访问时会将 link 的 version 与 source dep 同步
-   * - 运行结束后，version 为 -1（从未使用）的 link 会被清理
+   * - 在追踪依赖期间，会同步 Dep 的 version
+   * - 当依赖追踪结束后，如果 version 还是 -1，则直接清除（说明当前副作用没用到）
    */
   version: number
 
@@ -62,11 +62,8 @@ export class Link {
  * @internal
  */
 export class Dep {
-  version = 0
-  /**
-   * 此 dep 与当前 active effect 的连接
-   */
-  activeLink?: Link = undefined
+  version = 0 // 记录当前数据修改的版本（修改了数据就会累加）
+  activeLink?: Link = undefined // 当前依赖和活跃的副作用连接
 
   /**
    * 表示订阅 effect 的双向链表（尾部）
@@ -82,13 +79,10 @@ export class Dep {
   /**
    * 用于对象属性 deps 的清理
    */
-  map?: KeyToDepMap = undefined
-  key?: unknown = undefined
+  map?: KeyToDepMap = undefined // “键对依赖映射”对象
+  key?: unknown = undefined // 依赖的键
 
-  /**
-   * 订阅者计数
-   */
-  sc: number = 0
+  sc: number = 0 // 订阅者数量
 
   /**
    * @internal
@@ -102,31 +96,34 @@ export class Dep {
     }
   }
 
+  // 依赖追踪，查看哪些副作用函数用到了“自己”，记录起来
   track(debugInfo?: DebuggerEventExtraInfo): Link | undefined {
+    // 这里之所以还要对计算属性进行判断是为了避免计算属性中再修改依赖的响应式数据，触发循环依赖
     if (!activeSub || !shouldTrack || activeSub === this.computed) {
       return
     }
 
     let link = this.activeLink
+    // 当前 dep 未建立任何副作用连接或者建立连接不是为当前的副作用
     if (link === undefined || link.sub !== activeSub) {
-      link = this.activeLink = new Link(activeSub, this)
+      link = this.activeLink = new Link(activeSub, this) // 创建连接
 
-      // 将 link 作为 dep（尾部）添加到 activeEffect
+      // 当前活跃的副作用如果不存在依赖，说明这个副作用是第一次执行
       if (!activeSub.deps) {
-        activeSub.deps = activeSub.depsTail = link
+        activeSub.deps = activeSub.depsTail = link // 订阅者对应的依赖头和尾都进行赋值
       } else {
         link.prevDep = activeSub.depsTail
         activeSub.depsTail!.nextDep = link
-        activeSub.depsTail = link
+        // 上面两个实际的作用其实就是建立依赖之间的连接，让最新的依赖能够在上一个最后一个依赖之后，像一条链一样串着
+        activeSub.depsTail = link // 更新订阅者尾部连接
       }
 
       addSub(link)
-    } else if (link.version === -1) {
-      // 从上次运行复用 - 已是订阅者，仅同步 version
-      link.version = this.version
-
-      // 如果此 dep 有 next，说明它不在尾部 - 移动到尾部。
-      // 这确保 effect 的 dep 列表顺序与求值时的访问顺序一致。
+    }
+    // 被标记为“软删除”，但副作用又重新使用到了这个依赖
+    else if (link.version === -1) {
+      link.version = this.version // 替换为当前依赖的版本
+      // 判断是否为尾节点，如果存在下一个节点才需要移动
       if (link.nextDep) {
         const next = link.nextDep
         next.prevDep = link.prevDep
@@ -199,40 +196,48 @@ export class Dep {
   }
 }
 
+// 完善 link 的 dep -> sub 这条链路的指向
+// 在 track 的时候，只记录了 sub -> dep，即订阅者对应的所有依赖有哪些，而这里需要建立反向链
+// 同时需要记录 dep 对应的 sub 有哪些
 function addSub(link: Link) {
-  link.dep.sc++
+  link.dep.sc++ // 依赖被订阅者订阅的数量累加
+  // 只有当订阅者（sub）正处于追踪状态时，才需要真正建立订阅关系
   if (link.sub.flags & EffectFlags.TRACKING) {
     const computed = link.dep.computed
-    // computed 获取第一个订阅者
-    // 启用跟踪 + 懒订阅其所有 deps
+
+    // 如果依赖为计算属性并且没有订阅者
     if (computed && !link.dep.subs) {
+      // 追踪自己的依赖，并且设置为脏
       computed.flags |= EffectFlags.TRACKING | EffectFlags.DIRTY
       for (let l = computed.deps; l; l = l.nextDep) {
-        addSub(l)
+        addSub(l) // 计算属性也能作为订阅者，所以需要递归处理其中的依赖
       }
     }
 
-    const currentTail = link.dep.subs
+    const currentTail = link.dep.subs // 获取依赖对应的订阅者链表
+    // 如果这个 link 已经是当前尾节点了，就不需要再操作一遍
     if (currentTail !== link) {
+      // 订阅者尾部插入
       link.prevSub = currentTail
-      if (currentTail) currentTail.nextSub = link
+      if (currentTail) currentTail.nextSub = link // 如果是第一次可，当前的尾会为空，所以这里要判断
     }
 
     if (__DEV__ && link.dep.subsHead === undefined) {
       link.dep.subsHead = link
     }
 
-    link.dep.subs = link
+    link.dep.subs = link // 更新尾部
   }
 }
 
-// 存储 {target -> key -> dep} 关系的主 WeakMap。
+// 存储 {target -> key -> depMap} 关系的主 WeakMap。
 // 从概念上看，可以把依赖理解为维护一组订阅者的 Dep 类，
 // 但为了降低内存开销，我们用原始 Map 来存储。
 type KeyToDepMap = Map<any, Dep>
 
 export const targetMap: WeakMap<object, KeyToDepMap> = new WeakMap()
 
+// 用于依赖追踪的特殊键
 export const ITERATE_KEY: unique symbol = Symbol(
   __DEV__ ? 'Object iterate' : '',
 )
@@ -243,24 +248,20 @@ export const ARRAY_ITERATE_KEY: unique symbol = Symbol(
   __DEV__ ? 'Array iterate' : '',
 )
 
-/**
- * 跟踪对响应式属性的访问。
- *
- * 这会检查当前正在运行的 effect，并将其记录为 dep，
- * 该 dep 记录所有依赖该响应式属性的 effect。
- *
- * @param target - 持有响应式属性的对象。
- * @param type - 对该响应式属性的访问类型。
- * @param key - 要跟踪的响应式属性标识。
- */
+// 依赖追踪，target 为原始对象，type 为触发追踪的类型，key 追踪类型的键
 export function track(target: object, type: TrackOpTypes, key: unknown): void {
+  // 可追踪，并且当前有活跃的订阅者（需要响应式，因为不需要响应式的话追踪毫无意义，浪费性能）
+  // 所以这里需要判断是否有 activeSub
   if (shouldTrack && activeSub) {
+    // 从 weakMap 中获取依赖的映射
     let depsMap = targetMap.get(target)
+    // 如果没有则进行初始化
     if (!depsMap) {
       targetMap.set(target, (depsMap = new Map()))
     }
-    let dep = depsMap.get(key)
+    let dep = depsMap.get(key) // 从依赖映射中获取对应键的依赖
     if (!dep) {
+      // 初始化依赖并添加
       depsMap.set(key, (dep = new Dep()))
       dep.map = depsMap
       dep.key = key

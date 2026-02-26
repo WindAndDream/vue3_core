@@ -36,7 +36,7 @@ export interface ReactiveEffectRunner<T = any> {
   effect: ReactiveEffect
 }
 
-export let activeSub: Subscriber | undefined
+export let activeSub: Subscriber | undefined // 全局当前正在运行的副作用
 
 export enum EffectFlags {
   /**

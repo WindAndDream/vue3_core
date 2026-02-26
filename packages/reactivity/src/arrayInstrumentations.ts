@@ -39,9 +39,11 @@ function toWrapped(target: unknown, item: unknown) {
   return toReactive(item)
 }
 
+// 特殊处理过后的数组方法
 export const arrayInstrumentations: Record<string | symbol, Function> = <any>{
   __proto__: null,
 
+  // 迭代方法
   [Symbol.iterator]() {
     return iterator(this, Symbol.iterator, item => toWrapped(this, item))
   },

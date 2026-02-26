@@ -38,6 +38,6 @@ export enum ReactiveFlags {
   IS_REACTIVE = '__v_isReactive',
   IS_READONLY = '__v_isReadonly',
   IS_SHALLOW = '__v_isShallow',
-  RAW = '__v_raw',
+  RAW = '__v_raw', // 通过这个标志可以获取代理对象后的原始对象
   IS_REF = '__v_isRef',
 }
