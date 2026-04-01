@@ -21,8 +21,8 @@ import { warn } from './warning'
 // 集合类型，可迭代和弱集合
 type CollectionTypes = IterableCollections | WeakCollections
 
-type IterableCollections = (Map<any, any> | Set<any>) & Target
-type WeakCollections = (WeakMap<any, any> | WeakSet<any>) & Target
+type IterableCollections = (Map<any, any> | Set<any>) & Target // Map/Set 对象
+type WeakCollections = (WeakMap<any, any> | WeakSet<any>) & Target // WeakMap/WeakSet 对象
 type MapTypes = (Map<any, any> | WeakMap<any, any>) & Target
 type SetTypes = (Set<any> | WeakSet<any>) & Target
 
@@ -32,43 +32,55 @@ const toShallow = <T extends unknown>(value: T): T => value
 const getProto = <T extends CollectionTypes>(v: T): any =>
   Reflect.getPrototypeOf(v)
 
+// 给 Map / Set 的迭代方法统一加上响应式外壳的工厂函数
 function createIterableMethod(
-  method: string | symbol,
-  isReadonly: boolean,
-  isShallow: boolean,
+  method: string | symbol, // 哪种迭代方法
+  isReadonly: boolean, // 是不是只读
+  isShallow: boolean, // 是不是浅层
 ) {
   return function (
     this: IterableCollections,
     ...args: unknown[]
   ): Iterable<unknown> & Iterator<unknown> {
-    const target = this[ReactiveFlags.RAW]
-    const rawTarget = toRaw(target)
+    const target = this[ReactiveFlags.RAW] // 获取原始对象
+    const rawTarget = toRaw(target) // 解包原始对象，因为原始对象也可能为代理
     const targetIsMap = isMap(rawTarget)
+
+    // 判断方法的产出是否为“一对”，类似[[key, value], [key, value]...]
     const isPair =
-      method === 'entries' || (method === Symbol.iterator && targetIsMap)
+      method === 'entries' || (method === Symbol.iterator && targetIsMap) // entries 方法或者 Map 的 Symbol.iterator 方法、
+
+    // 判断是否为 Map.keys()，因为 keys() 只关心 key 集合是否变化，不该和 values()/entries() 共用同一种迭代依赖
     const isKeyOnly = method === 'keys' && targetIsMap
-    const innerIterator = target[method](...args)
+    const innerIterator = target[method](...args) // 底层真实迭代器
+
+    // 根据只读/浅层的状态来决定包裹的函数
+    // 浅层则直接返回：toShallow
+    // 只读则包裹为只读：toReadonly
+    // 否则包裹为响应式：toReactive
     const wrap = isShallow ? toShallow : isReadonly ? toReadonly : toReactive
+
+    // 如果不是只读集合，就在“开始迭代”时收集依赖
     !isReadonly &&
       track(
         rawTarget,
         TrackOpTypes.ITERATE,
         isKeyOnly ? MAP_KEY_ITERATE_KEY : ITERATE_KEY,
       )
-    // return a wrapped iterator which returns observed versions of the
-    // values emitted from the real iterator
+
+    // 返回一个自定义迭代器对象，而不是直接返回原生迭代器
     return {
-      // iterator protocol
+      // 迭代协议
       next() {
         const { value, done } = innerIterator.next()
         return done
-          ? { value, done }
+          ? { value, done } // 如果结束了则直接返回原始的值
           : {
-              value: isPair ? [wrap(value[0]), wrap(value[1])] : wrap(value),
-              done,
+              value: isPair ? [wrap(value[0]), wrap(value[1])] : wrap(value), // 如果是一对则包裹两个，否则直接包裹值
+              done, // done 不为 true
             }
       },
-      // iterable protocol
+      // 迭代协议，返回自身
       [Symbol.iterator]() {
         return this
       },
