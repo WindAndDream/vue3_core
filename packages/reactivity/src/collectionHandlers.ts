@@ -18,6 +18,7 @@ import {
 } from '@vue/shared'
 import { warn } from './warning'
 
+// 集合类型，可迭代和弱集合
 type CollectionTypes = IterableCollections | WeakCollections
 
 type IterableCollections = (Map<any, any> | Set<any>) & Target
@@ -27,6 +28,7 @@ type SetTypes = (Set<any> | WeakSet<any>) & Target
 
 const toShallow = <T extends unknown>(value: T): T => value
 
+// 获取原型
 const getProto = <T extends CollectionTypes>(v: T): any =>
   Reflect.getPrototypeOf(v)
 
@@ -93,6 +95,7 @@ function createReadonlyMethod(type: TriggerOpTypes): Function {
 
 type Instrumentations = Record<string | symbol, Function | number>
 
+// 为集合类型封装额外的逻辑操作
 function createInstrumentations(
   readonly: boolean,
   shallow: boolean,

@@ -63,15 +63,27 @@ export class Link {
  */
 export class Dep {
   version = 0 // 记录当前数据修改的版本（修改了数据就会累加）
-  activeLink?: Link = undefined // 当前依赖和活跃的副作用连接
+  /**
+   * 1.复用旧 Link
+   * effect/computed 重新执行前，prepareDeps() 会把旧依赖的 link.version 先设成 -1，并把 dep.activeLink 指回这条旧 link。
+   * 访问还是同一个 dep 时，在 track() 时就能复用旧 link。
+   *
+   * 2.动态切换上下文
+   * 如果外层 effect/computed 和内层 effect/computed 都访问同一个 dep，dep.activeLink 会暂时被内层覆盖。
+   * 所以 prepareDeps() 会把旧值存到 link.prevActiveLink，等本轮结束后在 cleanupDeps() 里恢复，避免串乱。
+   *
+   * 简单来说，activeLink 是当前执行中的临时定位指针，就记录着当前运行时，当前的 dep 对应着哪个订阅者
+   *
+   */
+  activeLink?: Link = undefined
 
   /**
-   * 表示订阅 effect 的双向链表（尾部）
+   * 订阅者的双向链表（尾部）
    */
   subs?: Link = undefined
 
   /**
-   * 表示订阅 effect 的双向链表（头部）
+   * 订阅者的双向链表（头部）
    * 仅 DEV：用于按正确顺序调用 onTrigger hook
    */
   subsHead?: Link
@@ -90,6 +102,7 @@ export class Dep {
   readonly __v_skip = true
   // TODO isolatedDeclarations ReactiveFlags.SKIP（待处理）
 
+  // 传入计算属性后，表示当前依赖为一个计算属性
   constructor(public computed?: ComputedRefImpl | undefined) {
     if (__DEV__) {
       this.subsHead = undefined
@@ -98,13 +111,13 @@ export class Dep {
 
   // 依赖追踪，查看哪些副作用函数用到了“自己”，记录起来
   track(debugInfo?: DebuggerEventExtraInfo): Link | undefined {
-    // 这里之所以还要对计算属性进行判断是为了避免计算属性中再修改依赖的响应式数据，触发循环依赖
+    // 这里之所以还要对计算属性进行判断，是为了避免当前正在求值的 computed 把自己收集到自己的 dep 上
     if (!activeSub || !shouldTrack || activeSub === this.computed) {
       return
     }
 
     let link = this.activeLink
-    // 当前 dep 未建立任何副作用连接或者建立连接不是为当前的副作用
+    // 第一次副作用运行，并且该依赖的订阅者是当前正在运行的订阅者
     if (link === undefined || link.sub !== activeSub) {
       link = this.activeLink = new Link(activeSub, this) // 创建连接
 
@@ -120,11 +133,13 @@ export class Dep {
 
       addSub(link)
     }
-    // 被标记为“软删除”，但副作用又重新使用到了这个依赖
+    // 被标记为“软删除”，但副作用又重新运行了，并且用到了该依赖
     else if (link.version === -1) {
       link.version = this.version // 替换为当前依赖的版本
       // 判断是否为尾节点，如果存在下一个节点才需要移动
       if (link.nextDep) {
+        // 下面做的都是将新依赖进行尾部追加
+        // 保证了链表前段都是"本次没访问的旧依赖"，后段都是"本次访问过的依赖"
         const next = link.nextDep
         next.prevDep = link.prevDep
         if (link.prevDep) {
@@ -136,7 +151,6 @@ export class Dep {
         activeSub.depsTail!.nextDep = link
         activeSub.depsTail = link
 
-        // 之前是头结点 - 指向新的头结点
         if (activeSub.deps === link) {
           activeSub.deps = next
         }
@@ -184,7 +198,7 @@ export class Dep {
       }
       for (let link = this.subs; link; link = link.prevSub) {
         if (link.sub.notify()) {
-          // 如果 notify() 返回 `true`，说明这是 computed。
+          // 通知订阅者，如果 notify() 返回 `true`，说明这是 computed
           // 还需要调用它的 dep.notify - 放在这里而不是 computed 的 notify
           // 内部，以降低调用栈深度。
           ;(link.sub as ComputedRefImpl).dep.notify()
@@ -205,7 +219,7 @@ function addSub(link: Link) {
   if (link.sub.flags & EffectFlags.TRACKING) {
     const computed = link.dep.computed
 
-    // 如果依赖为计算属性并且没有订阅者
+    // 如果依赖为计算属性并且没有订阅者（避免重复订阅，所以需要判断）
     if (computed && !link.dep.subs) {
       // 追踪自己的依赖，并且设置为脏
       computed.flags |= EffectFlags.TRACKING | EffectFlags.DIRTY
@@ -279,12 +293,14 @@ export function track(target: object, type: TrackOpTypes, key: unknown): void {
 }
 
 /**
- * 查找与目标（或某个特定属性）相关的所有 dep，
- * 并触发其中存储的 effect。
  *
- * @param target - 响应式对象。
- * @param type - 需要触发 effect 的操作类型。
- * @param key - 可用于定位目标对象上的某个响应式属性。
+ * @param target 目标对象
+ * @param type 触发的类型（枚举）
+ * @param key 修改的 key
+ * @param newValue 所赋予的值
+ * @param oldValue 某一个 key 之前的值
+ * @param oldTarget 整个 Map / Set 在变更前的内容副本
+ * @returns
  */
 export function trigger(
   target: object,
@@ -295,8 +311,8 @@ export function trigger(
   oldTarget?: Map<unknown, unknown> | Set<unknown>,
 ): void {
   const depsMap = targetMap.get(target)
+  // 不存在依赖对应的副作用
   if (!depsMap) {
-    // 从未被跟踪
     globalVersion++
     return
   }

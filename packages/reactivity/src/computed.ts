@@ -24,10 +24,12 @@ interface BaseComputedRef<T, S = T> extends Ref<T, S> {
   effect: ComputedRefImpl
 }
 
+// 计算属性传入 getter 则返回只读值
 export interface ComputedRef<T = any> extends BaseComputedRef<T> {
   readonly value: T
 }
 
+// 计算属性传入读写则返回可写值
 export interface WritableComputedRef<T, S = T> extends BaseComputedRef<T, S> {
   [WritableComputedRefSymbol]: true
 }
@@ -35,6 +37,7 @@ export interface WritableComputedRef<T, S = T> extends BaseComputedRef<T, S> {
 export type ComputedGetter<T> = (oldValue?: T) => T
 export type ComputedSetter<T> = (newValue: T) => void
 
+// 可写的计算属性
 export interface WritableComputedOptions<T, S = T> {
   get: ComputedGetter<T>
   set: ComputedSetter<S>
@@ -51,7 +54,7 @@ export class ComputedRefImpl<T = any> implements Subscriber {
   /**
    * @internal
    */
-  readonly dep: Dep = new Dep(this)
+  readonly dep: Dep = new Dep(this) // 计算属性作为依赖被使用时，就需要使用到 dep
   /**
    * @internal
    */
@@ -66,23 +69,23 @@ export class ComputedRefImpl<T = any> implements Subscriber {
   /**
    * @internal
    */
-  deps?: Link = undefined
+  deps?: Link = undefined // 当前 subscriber 持有的依赖 Link 链表头，表示“它依赖了哪些 dep”
   /**
    * @internal
    */
-  depsTail?: Link = undefined
+  depsTail?: Link = undefined // 上述依赖 Link 链表的尾节点
   /**
    * @internal
    */
-  flags: EffectFlags = EffectFlags.DIRTY
+  flags: EffectFlags = EffectFlags.DIRTY // 计算属性的位标志
   /**
    * @internal
    */
-  globalVersion: number = globalVersion - 1
+  globalVersion: number = globalVersion - 1 // 全局版本状态
   /**
    * @internal
    */
-  isSSR: boolean
+  isSSR: boolean // 是否为 ssr
   /**
    * @internal
    */
@@ -112,14 +115,14 @@ export class ComputedRefImpl<T = any> implements Subscriber {
 
   /**
    * @internal
+   *
+   * 依赖通知，说明计算属性脏了，需要重新计算
    */
   notify(): true | void {
-    this.flags |= EffectFlags.DIRTY
-    if (
-      !(this.flags & EffectFlags.NOTIFIED) &&
-      // 避免无限自递归
-      activeSub !== this
-    ) {
+    this.flags |= EffectFlags.DIRTY // 追加脏的位标志
+
+    // 避免重复通知、无线递归自己
+    if (!(this.flags & EffectFlags.NOTIFIED) && activeSub !== this) {
       batch(this, true)
       return true
     } else if (__DEV__) {

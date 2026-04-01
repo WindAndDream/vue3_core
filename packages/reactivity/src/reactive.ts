@@ -319,8 +319,6 @@ function createReactiveObject(
 }
 
 /**
- * Checks if an object is a proxy created by {@link reactive} or
- * {@link shallowReactive} (or {@link ref} in some cases).
  *
  * @example
  * ```js
@@ -335,6 +333,8 @@ function createReactiveObject(
  *
  * @param value - The value to check.
  * @see {@link https://vuejs.org/api/reactivity-utilities.html#isreactive}
+ * 判断是否为 reactive 对象
+ * 由 reactive、shallowReactive 创建的对象，以及 ref 的 value（本质上就是 reactive ）
  */
 export function isReactive(value: unknown): boolean {
   if (isReadonly(value)) {
@@ -344,20 +344,26 @@ export function isReactive(value: unknown): boolean {
 }
 
 /**
- * Checks whether the passed value is a readonly object. The properties of a
- * readonly object can change, but they can't be assigned directly via the
- * passed object.
  *
  * The proxies created by {@link readonly} and {@link shallowReadonly} are
  * both considered readonly, as is a computed ref without a set function.
  *
  * @param value - The value to check.
  * @see {@link https://vuejs.org/api/reactivity-utilities.html#isreadonly}
+ *
+ * 判断是否为只读对象
+ * 由 readonly 或者 shallowReadonly 创建的对象都可以判定为只读对象
+ * 核心在于对值进行 get 时，传入 ReactiveFlags.IS_READONLY 的 key 是否为返回正确值
  */
 export function isReadonly(value: unknown): boolean {
   return !!(value && (value as Target)[ReactiveFlags.IS_READONLY])
 }
 
+/**
+ * 判断是否为浅层对象
+ * 由 shallow 或者 shallowReadonly 创建的对象都可以判定为只读对象
+ * 核心在于对值进行 get 时，传入 ReactiveFlags.IS_SHALLOW 的 key 是否为返回正确值
+ */
 export function isShallow(value: unknown): boolean {
   return !!(value && (value as Target)[ReactiveFlags.IS_SHALLOW])
 }
@@ -368,6 +374,8 @@ export function isShallow(value: unknown): boolean {
  *
  * @param value - The value to check.
  * @see {@link https://vuejs.org/api/reactivity-utilities.html#isproxy}
+ * 判断是否为代理对象
+ * 由 reactive 、readonly、shallowReactive、shallowReadonly创建的代理对象
  */
 export function isProxy(value: any): boolean {
   return value ? !!value[ReactiveFlags.RAW] : false
@@ -433,21 +441,13 @@ export function markRaw<T extends object>(value: T): Raw<T> {
 }
 
 /**
- * Returns a reactive proxy of the given value (if possible).
- *
- * If the given value is not an object, the original value itself is returned.
- *
- * @param value - The value for which a reactive proxy shall be created.
+ * 转为响应式，如果传入的值是对象则返回响应式对象，否则原值返回
  */
 export const toReactive = <T extends unknown>(value: T): T =>
   isObject(value) ? reactive(value) : value
 
 /**
- * Returns a readonly proxy of the given value (if possible).
- *
- * If the given value is not an object, the original value itself is returned.
- *
- * @param value - The value for which a readonly proxy shall be created.
+ * 转为只读响应式，如果传入的值是对象则返回只读响应式对象，否则原值返回
  */
 export const toReadonly = <T extends unknown>(value: T): DeepReadonly<T> =>
   isObject(value) ? readonly(value) : (value as DeepReadonly<T>)

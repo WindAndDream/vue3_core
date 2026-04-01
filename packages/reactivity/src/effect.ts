@@ -58,28 +58,25 @@ export enum EffectFlags {
  */
 export interface Subscriber extends DebuggerOptions {
   /**
-   * 表示 deps 的双向链表头
    * @internal
    */
-  deps?: Link
-  /**
-   * 同一链表的尾部
-   * @internal
-   */
-  depsTail?: Link
+  deps?: Link // 当前 subscriber 持有的依赖 Link 链表头，表示“它依赖了哪些 dep”
   /**
    * @internal
    */
-  flags: EffectFlags
+  depsTail?: Link // 上述依赖 Link 链表的尾节点
   /**
    * @internal
    */
-  next?: Subscriber
+  flags: EffectFlags // 当前 subscriber 的位标记状态
   /**
-   * 返回 `true` 表示这是 computed，需要额外通知它的 dep
    * @internal
    */
-  notify(): true | void
+  next?: Subscriber // 批处理队列里的下一个 subscriber，用于把它们串成队列
+  /**
+   * @internal
+   */
+  notify(): true | void // 被 dep 通知；返回 true 表示这是 computed，调用方还要继续通知它自己的 dep（计算属性即是依赖也是订阅者）
 }
 
 const pausedQueueEffects = new WeakSet<ReactiveEffect>()
@@ -106,14 +103,15 @@ export class ReactiveEffect<T = any>
   /**
    * @internal
    */
-  cleanup?: () => void = undefined
+  cleanup?: () => void = undefined // 在副作用运行前和stop前都会触发一次的清除回调
 
-  scheduler?: EffectScheduler = undefined
-  onStop?: () => void
-  onTrack?: (event: DebuggerEvent) => void
-  onTrigger?: (event: DebuggerEvent) => void
+  scheduler?: EffectScheduler = undefined // 调度器，如果存在，在 trigger 时会优先走调度器
+  onStop?: () => void // 在副作用调用 stop 方法时会触发 onStop 回调
+  onTrack?: (event: DebuggerEvent) => void // 开发调试使用
+  onTrigger?: (event: DebuggerEvent) => void // 开发调试使用
 
   constructor(public fn: () => T) {
+    // 副作用作用域
     if (activeEffectScope && activeEffectScope.active) {
       activeEffectScope.effects.push(this)
     }
@@ -160,12 +158,12 @@ export class ReactiveEffect<T = any>
       return this.fn()
     }
 
-    this.flags |= EffectFlags.RUNNING
+    this.flags |= EffectFlags.RUNNING // 当前订阅者的状态为运行中
     cleanupEffect(this) //
     prepareDeps(this) //
-    const prevEffect = activeSub
-    const prevShouldTrack = shouldTrack
-    activeSub = this
+    const prevEffect = activeSub // 上一个订阅者
+    const prevShouldTrack = shouldTrack // 上一个订阅者追踪状态
+    activeSub = this // 当前活跃的订阅者
     shouldTrack = true
 
     try {
@@ -243,13 +241,14 @@ let batchedSub: Subscriber | undefined
 let batchedComputed: Subscriber | undefined
 
 export function batch(sub: Subscriber, isComputed = false): void {
-  sub.flags |= EffectFlags.NOTIFIED
+  sub.flags |= EffectFlags.NOTIFIED // 设置已通知位标记，避免重复
+  // 计算属性就入计算属性的批次
   if (isComputed) {
     sub.next = batchedComputed
     batchedComputed = sub
     return
   }
-  sub.next = batchedSub
+  sub.next = batchedSub // 入批次
   batchedSub = sub
 }
 
@@ -303,14 +302,20 @@ export function endBatch(): void {
   if (error) throw error
 }
 
+// 重新执行前的依赖预处理
 function prepareDeps(sub: Subscriber) {
-  // 准备依赖用于跟踪，从链表头开始
+  // 在重新执行 sub 之前，先把上一轮的旧依赖全部标记为“本轮暂未使用”
   for (let link = sub.deps; link; link = link.nextDep) {
-    // 将所有旧依赖（如果有）的 version 设为 -1，以便我们跟踪
-    // 运行后哪些依赖未被使用
+    // -1 表示这条旧依赖还没有在本轮执行中被重新访问到
+    // 如果后续 track() 又访问到它，会把 version 恢复为 dep.version
+    // 执行结束后仍为 -1 的 link，会在 cleanupDeps() 中被移除
     link.version = -1
-    // 如果 link 在其他上下文中被使用，保存之前的 active sub
+
+    // 保存 dep 之前的 activeLink，便于 cleanupDeps() 时恢复
     link.prevActiveLink = link.dep.activeLink
+
+    // 先把 dep.activeLink 指向这条旧 link
+    // 这样本轮再次访问同一个 dep 时，可以直接复用旧 link，而不是新建
     link.dep.activeLink = link
   }
 }
@@ -347,9 +352,11 @@ function cleanupDeps(sub: Subscriber) {
 
 function isDirty(sub: Subscriber): boolean {
   for (let link = sub.deps; link; link = link.nextDep) {
-    // 这个判断的意思是指computed是否发生变化、变化之后的值是否不一样了，才会重新计算
     if (
+      // link.version：sub 上一次追踪这个依赖时，记下来的版本号快照
+      // link.dep.version：这个依赖现在的最新版本号
       link.dep.version !== link.version ||
+      // 判断 computed 是否发生变化、变化之后的值是否不一样了，才会重新计算
       (link.dep.computed &&
         (refreshComputed(link.dep.computed) ||
           link.dep.version !== link.version))
@@ -366,17 +373,19 @@ function isDirty(sub: Subscriber): boolean {
 }
 
 /**
- * 返回 false 表示刷新失败
+ * 返回 false 表示计算属性的值没有变化，不用重算
  * @internal
  */
 export function refreshComputed(computed: ComputedRefImpl): undefined {
+  // 已经挂在依赖中，并且未标脏，则直接信任缓存
   if (
     computed.flags & EffectFlags.TRACKING &&
     !(computed.flags & EffectFlags.DIRTY)
   ) {
     return
   }
-  computed.flags &= ~EffectFlags.DIRTY
+
+  computed.flags &= ~EffectFlags.DIRTY // 清除脏状态
 
   // 当自上次刷新后没有响应式变更时，使用全局版本的快速路径
   if (computed.globalVersion === globalVersion) {
@@ -384,12 +393,11 @@ export function refreshComputed(computed: ComputedRefImpl): undefined {
   }
   computed.globalVersion = globalVersion
 
-  // 在 SSR 中没有渲染 effect，因此 computed 没有订阅者
-  // 因此不会跟踪 deps，不能依赖脏检查。
-  // 因此 computed 总是重新求值，并依赖 globalVersion
-  // 的快速路径进行缓存。
-  // #12337 如果 computed 没有 deps（不依赖任何响应式数据）且已评估，
-  // 就不需要重新求值。
+  // 不是 SSR
+  // 已经至少求值过一次
+  // 没有 deps 依赖
+  // 不为脏
+  // 满足以上条件也代表这个计算属性没发生变化，直接返回
   if (
     !computed.isSSR &&
     computed.flags & EffectFlags.EVALUATED &&
@@ -397,9 +405,13 @@ export function refreshComputed(computed: ComputedRefImpl): undefined {
   ) {
     return
   }
+
+  // 设置为运行中状态
   computed.flags |= EffectFlags.RUNNING
 
-  const dep = computed.dep
+  const dep = computed.dep // 保存计算属性依赖（计算属性本身）
+
+  // 活跃的订阅者、追踪状态保存
   const prevSub = activeSub
   const prevShouldTrack = shouldTrack
   activeSub = computed
@@ -420,7 +432,7 @@ export function refreshComputed(computed: ComputedRefImpl): undefined {
     activeSub = prevSub
     shouldTrack = prevShouldTrack
     cleanupDeps(computed)
-    computed.flags &= ~EffectFlags.RUNNING
+    computed.flags &= ~EffectFlags.RUNNING // 移除运行中状态
   }
 }
 
@@ -510,12 +522,9 @@ export function stop(runner: ReactiveEffectRunner): void {
 /**
  * @internal
  */
-export let shouldTrack = true
-const trackStack: boolean[] = []
+export let shouldTrack = true // 当前执行上下文里是否允许做依赖收集
+const trackStack: boolean[] = [] // 用于追踪嵌套的栈，毕竟如果嵌套需要多个暂停和启动需要栈来维护状态
 
-/**
- * 临时暂停跟踪。
- */
 export function pauseTracking(): void {
   trackStack.push(shouldTrack)
   shouldTrack = false
@@ -529,20 +538,14 @@ export function enableTracking(): void {
   shouldTrack = true
 }
 
-/**
- * 恢复之前的全局 effect 跟踪状态。
- */
 export function resetTracking(): void {
   const last = trackStack.pop()
   shouldTrack = last === undefined ? true : last
 }
 
 /**
- * 为当前 active effect 注册一个清理函数。
- * 清理函数会在下一次 effect 运行前，或 effect 停止时被调用。
- *
- * 如果当前没有 active effect，则会抛出警告。
- * 传入第二个参数为 `true` 时可抑制该警告。
+ * 为当前活跃的 effect 注册一个清理函数
+ * 清理函数会在下一次 effect 运行前，或 effect 调用 stop 方法时调用
  *
  * @param fn - 要注册的清理函数
  * @param failSilently - 若为 `true`，在没有 active effect 时调用不会警告
